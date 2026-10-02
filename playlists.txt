@@ -1,0 +1,13 @@
+# Une URL de playlist / album Spotify par ligne.
+# Les lignes vides et celles commencant par # sont ignorees.
+# Lance : download.bat -> choix "Telecharger PLUSIEURS playlists"
+#    ou : python bin\downloader.py --file playlists.txt
+#
+# Les playlists / albums que tu telecharges sont AJOUTES ICI automatiquement
+# (sauf en mode --file), pour pouvoir tout re-synchroniser en une fois.
+#
+# Exemple :
+# https://open.spotify.com/playlist/XXXXXXXXXXXXXXXXXXXXXX
+
+https://open.spotify.com/playlist/0p7QI87F7PZBb6w0MdNDAQ?si=3f1a2b3b35f34959
+https://open.spotify.com/playlist/4Fmbi2KnVo054Nc8PyhCFl?si=cbbd7c9729bb4a1c

@@ -1,0 +1,21 @@
+# Musique telechargee -- ne pas committer
+Musique/
+*.mp3
+*.opus
+*.m4a
+*.flac
+*.wav
+
+# Fichiers generes
+_missing.txt
+*.log
+*.spotdl
+*.norm.tmp
+run*.txt
+lastrun.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
