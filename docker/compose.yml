@@ -1,0 +1,44 @@
+# spotify-downloader -- deploiement NAS (Debian 13 + Docker)
+#
+# Install :
+#   1. Edite .env (copie depuis .env.example) : MUSIC_DIR, API_PORT, SYNC_INTERVAL
+#   2. docker compose up -d --build
+#   3. Le token API est genere au 1er boot dans ./state/api_token
+#      (recupere-le : docker compose exec downloader cat /state/api_token)
+#
+# La bibliotheque musicale est dans le volume ./musique (ou MUSIC_DIR du .env).
+# Edite ./config/playlists.txt pour choisir les playlists suivies.
+
+services:
+  downloader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Image publiee par GitHub Actions sur ghcr.io.
+    # `docker compose pull` tire cette image (pas besoin de builder sur le NAS).
+    # Surcharge possible via IMAGE dans .env, ou build local : compose up --build.
+    image: "${IMAGE:-ghcr.io/dorvakoff/spotify-downloader:latest}"
+    container_name: spotify-downloader
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-8787}:8787"
+    environment:
+      # Config du telechargement (surcharge settings.ini).
+      SYNC_INTERVAL: "${SYNC_INTERVAL:-10m}"
+      SYNC_ON_START: "${SYNC_ON_START:-oui}"
+      SPOTDL_FORMAT: "${SPOTDL_FORMAT:-mp3}"
+      SPOTDL_BITRATE: "${SPOTDL_BITRATE:-320k}"
+      SPOTDL_PROVIDERS: "${SPOTDL_PROVIDERS:-soundcloud youtube-music bandcamp}"
+      SPOTDL_THREADS: "${SPOTDL_THREADS:-8}"
+      SPOTDL_NORMALISER: "${SPOTDL_NORMALISER:-oui}"
+      # Un token fixe peut etre impose ici ; sinon il est auto-genere.
+      API_TOKEN: "${API_TOKEN:-}"
+    volumes:
+      # La bibliotheque musicale (pointe vers ton disque, ex. /mnt/data/Musique).
+      - "${MUSIC_DIR:-./musique}:/musique"
+      # Config editable (playlists.txt, settings.ini).
+      - "./config:/config"
+      # Etat persistant (token, status.json, cache spotdl).
+      - "./state:/state"
+      # Cache/auth spotdl (deno, ffmpeg telecharges, cache).
+      - "./cache/spotdl:/root/.spotdl"

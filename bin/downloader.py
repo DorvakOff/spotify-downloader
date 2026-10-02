@@ -203,6 +203,22 @@ def load_config() -> dict:
             d["skip_existants"] = g("avance", "skip_existants")
             d["scan_complet"] = g("avance", "scan_complet")
             d["sync"] = g("avance", "sync")
+    # Separateur de dossier dans le template : normalise selon l'OS.
+    # settings.ini utilise '\' (Windows) ; sous Linux (NAS/Docker) il faut '/'.
+    d["template"] = d["template"].replace("\\", "/").replace("/", os.sep)
+
+    # Surcharges par variables d'environnement (pratique en Docker : le compose
+    # fixe la config sans editer settings.ini dans l'image).
+    env_map = {
+        "SPOTDL_BASE": "base", "SPOTDL_FORMAT": "format",
+        "SPOTDL_BITRATE": "bitrate", "SPOTDL_PROVIDERS": "providers",
+        "SPOTDL_THREADS": "threads", "SPOTDL_NORMALISER": "normaliser",
+        "SPOTDL_SYNC": "sync", "SPOTDL_SKIP": "skip_existants",
+    }
+    for env_key, cfg_key in env_map.items():
+        v = os.environ.get(env_key)
+        if v:
+            d[cfg_key] = v.strip()
     return d
 
 
@@ -393,7 +409,7 @@ def write_missing(pl_dir: Path, missing: list[str], url: str, providers: str) ->
     return None
 
 
-PLAYLISTS_FILE = ROOT / "playlists.txt"
+PLAYLISTS_FILE = Path(os.environ.get("SPOTDL_PLAYLISTS", str(ROOT / "playlists.txt")))
 
 _SPOTIFY_URL_RE = re.compile(
     r"https?://open\.spotify\.com/(?:intl-[a-z]+/)?(playlist|album)/([A-Za-z0-9]+)", re.I)

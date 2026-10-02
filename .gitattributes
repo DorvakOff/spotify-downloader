@@ -1,0 +1,20 @@
+# Normalisation des fins de ligne.
+# Par defaut : laisser Git gerer (auto).
+* text=auto
+
+# Les scripts shell DOIVENT etre en LF (sinon le shebang casse sous Linux/Docker).
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Les scripts PowerShell/batch cote Windows : CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Binaires / audio : jamais de conversion.
+*.mp3 binary
+*.opus binary
+*.m4a binary
+*.flac binary
+*.wav binary
