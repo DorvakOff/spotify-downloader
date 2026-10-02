@@ -1,0 +1,3 @@
+# Dependances de l'API HTTP (serveur NAS).
+fastapi>=0.110
+uvicorn[standard]>=0.29

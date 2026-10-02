@@ -19,3 +19,14 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Docker (runtime : ne jamais committer donnees, token, env local)
+docker/.env
+docker/state/
+docker/musique/
+docker/cache/
+docker/config/
+
+# IDE
+.idea/
+.vscode/
