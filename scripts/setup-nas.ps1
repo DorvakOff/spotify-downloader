@@ -28,7 +28,7 @@ param(
     [string]$MusicDir
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 function W([string]$t,[string]$c='Gray'){ Write-Host $t -ForegroundColor $c }
 
@@ -52,71 +52,121 @@ if(-not $Dest){
 $remoteDir = "~/spotify-downloader"
 $SshTarget = "$NasUser@$NasHost"
 
+# --- Cle SSH dediee : 1 seul prompt mot de passe pour toute l'install --------
+# On ne "cache" PAS le mot de passe (ce serait du clair sur disque) : on
+# installe une cle publique dediee sur le NAS. Tu tapes ton mot de passe UNE
+# fois (pour poser la cle), ensuite toutes les commandes passent par la cle,
+# sans aucun prompt -- cette fois-ci comme les suivantes.
+$KeyPath = Join-Path $env:USERPROFILE '.ssh\id_spotdl_nas'
+$SshOpts = @('-o','StrictHostKeyChecking=accept-new','-o','ConnectTimeout=10')
+
+function Invoke-Sshk { param([string]$Cmd,[switch]$Tty)
+    # Les here-strings PowerShell contiennent des CRLF ; bash recoit alors un
+    # \r colle a chaque commande (cd: '...docker\r': introuvable). On force LF.
+    $Cmd = $Cmd -replace "`r`n","`n" -replace "`r","`n"
+    $a = @('-i',$KeyPath,'-o','BatchMode=yes') + $SshOpts
+    if($Tty){ $a += '-t' }
+    $a += @($SshTarget, $Cmd)
+    & ssh @a 2>&1
+}
+function Invoke-Scpk { param([string]$Src,[string]$RemoteRel)
+    $a = @('-i',$KeyPath,'-o','BatchMode=yes','-r') + $SshOpts + @($Src, "${SshTarget}:$RemoteRel")
+    & scp @a 2>&1
+}
+
+if(-not (Test-Path $KeyPath)){
+    W "Generation d'une cle SSH dediee ($KeyPath)..." Gray
+    $sshDir = Split-Path $KeyPath
+    if(-not (Test-Path $sshDir)){ New-Item -ItemType Directory -Force -Path $sshDir | Out-Null }
+    & ssh-keygen -t ed25519 -N '""' -f $KeyPath -C 'spotify-downloader-nas' 2>&1 | Out-Null
+}
+$pubKey = (Get-Content "$KeyPath.pub" -Raw).Trim()
+
 W ""
 W "  NAS      : $SshTarget" Cyan
 W "  Dossier  : $remoteDir (sur le NAS)" Cyan
 W "  Port API : $ApiPort" Cyan
 W "  Dest     : $Dest (local)" Cyan
 W ""
-W "SSH ne sera utilise QUE pour cette installation. Entre ton mot de passe quand demande." Gray
-W ""
 
-# --- 1. Test SSH -------------------------------------------------------------
-W "[1/5] Test de la connexion SSH..." Yellow
-$whoami = ssh -o StrictHostKeyChecking=accept-new $SshTarget "echo OK; uname -a" 2>&1
-if($LASTEXITCODE -ne 0 -or $whoami -notmatch 'OK'){
-    W "Connexion SSH echouee : $whoami" Red
-    exit 1
+# --- 1. Installation de la cle (UN SEUL prompt mot de passe) -----------------
+W "[1/5] Connexion SSH + installation de la cle..." Yellow
+# Teste si la cle fonctionne deja (relance du script -> aucun prompt).
+$probe = Invoke-Sshk "echo SSHOK" 
+if($probe -notmatch 'SSHOK'){
+    W "  Premiere connexion : entre ton mot de passe SSH UNE SEULE FOIS." Gray
+    # ssh-copy-id n'existe pas sur Windows -> on pousse la cle a la main.
+    $install = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && grep -qxF '$pubKey' ~/.ssh/authorized_keys 2>/dev/null || echo '$pubKey' >> ~/.ssh/authorized_keys; chmod 600 ~/.ssh/authorized_keys; echo KEYOK"
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $res = (& ssh @SshOpts $SshTarget $install 2>&1 | Out-String)
+    $ErrorActionPreference = $prevEAP
+    if($res -notmatch 'KEYOK'){
+        W "Installation de la cle echouee : $res" Red
+        exit 1
+    }
+    $probe = Invoke-Sshk "echo SSHOK"
+    if($probe -notmatch 'SSHOK'){
+        W "La cle a ete posee mais l'auth par cle ne passe pas : $probe" Red
+        W "Verifie que le NAS autorise PubkeyAuthentication (sshd_config)." Yellow
+        exit 1
+    }
 }
-W "  Connecte : $whoami" Green
+$uname = (Invoke-Sshk "uname -a" | Where-Object { $_ -match 'Linux|GNU' } | Select-Object -First 1)
+W "  Connecte sans mot de passe : $uname" Green
 
 # --- 2. Copie du projet (scp) ------------------------------------------------
 W "[2/5] Copie du projet sur le NAS..." Yellow
-ssh $SshTarget "mkdir -p $remoteDir" 2>&1 | Out-Null
+Invoke-Sshk "mkdir -p $remoteDir" | Out-Null
 # On copie le strict necessaire au build (pas la musique ni les .git).
 $items = @('bin','docker','settings.ini','playlists.txt','README.md')
 foreach($it in $items){
     $src = Join-Path $Root $it
     if(Test-Path $src){
-        scp -r -o StrictHostKeyChecking=accept-new $src "${SshTarget}:$remoteDir/" 2>&1 | Out-Null
+        Invoke-Scpk $src "$remoteDir/" | Out-Null
     }
 }
 W "  Projet copie dans $remoteDir" Green
 
-# --- 3. Installation de Docker si absent -------------------------------------
-W "[3/5] Verification/installation de Docker..." Yellow
-$dockerCheck = ssh $SshTarget "command -v docker >/dev/null 2>&1 && echo HAS_DOCKER || echo NO_DOCKER" 2>&1
+# --- 3. Verification de Docker -----------------------------------------------
+W "[3/5] Verification de Docker..." Yellow
+$dockerCheck = Invoke-Sshk "command -v docker >/dev/null 2>&1 && echo HAS_DOCKER || echo NO_DOCKER"
 if($dockerCheck -match 'NO_DOCKER'){
-    W "  Docker absent -- installation via get.docker.com (sudo requis)..." Gray
-    $install = "curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $NasUser"
-    ssh -t $SshTarget $install 2>&1 | ForEach-Object { W "    $_" DarkGray }
-} else {
-    W "  Docker deja present." Green
+    W "  Docker introuvable sur le NAS." Red
+    W "  Installe-le d'abord : curl -fsSL https://get.docker.com | sh  puis  sudo usermod -aG docker $NasUser" Gray
+    exit 1
 }
+W "  Docker present." Green
 
-# --- 4. Build + up -----------------------------------------------------------
-W "[4/5] Build et demarrage du conteneur (peut prendre quelques minutes)..." Yellow
-$envSetup = @"
-cd $remoteDir/docker
+# --- 4. Pull + up (sans sudo : dorvak est dans le groupe docker) -------------
+W "[4/5] Pull de l'image et demarrage du conteneur..." Yellow
+$remote = @"
+cd $remoteDir/docker || exit 1
 [ -f .env ] || cp .env.example .env
 sed -i 's/^API_PORT=.*/API_PORT=$ApiPort/' .env
+__MUSICDIR__
+if docker compose pull; then docker compose up -d; else echo 'PULL_KO -> build local'; docker compose up -d --build; fi
 "@
-if($MusicDir){
-    $md = $MusicDir.Replace('/','\/')
-    $envSetup += "`nsed -i 's/^MUSIC_DIR=.*/MUSIC_DIR=$md/' .env"
-}
-$up = "$envSetup`n(sudo docker compose up -d --build || docker compose up -d --build)"
-ssh -t $SshTarget $up 2>&1 | ForEach-Object { W "    $_" DarkGray }
+$mdLine = if($MusicDir){ "sed -i 's/^MUSIC_DIR=.*/MUSIC_DIR=$($MusicDir.Replace('/','\/'))/' .env" } else { '' }
+$remote = $remote.Replace('__MUSICDIR__', $mdLine)
+Invoke-Sshk $remote | ForEach-Object { W "    $_" DarkGray }
 
-# --- 5. Recuperation du token ------------------------------------------------
+# --- 5. Recuperation automatique du token (avec retry) -----------------------
 W "[5/5] Recuperation du token API..." Yellow
-Start-Sleep -Seconds 3
-$token = ssh $SshTarget "cd $remoteDir/docker; (sudo docker compose exec -T downloader cat /state/api_token 2>/dev/null || docker compose exec -T downloader cat /state/api_token 2>/dev/null) | tr -d '\r\n'" 2>&1
-$token = ($token | Select-Object -Last 1).ToString().Trim()
+$token = ''
+foreach($try in 1..10){
+    Start-Sleep -Seconds 2
+    # Lu VIA le conteneur (root interne) -> pas de sudo cote hote.
+    $raw = Invoke-Sshk "cd $remoteDir/docker && docker compose exec -T downloader cat /state/api_token 2>/dev/null | tr -d '\r\n'"
+    $cand = @($raw) | Where-Object { $_ -match '^[0-9a-f]{32,}$' } | Select-Object -First 1
+    if($cand){ $token = "$cand".Trim(); break }
+    W "  ...conteneur pas encore pret (tentative $try/10)" DarkGray
+}
 if($token -notmatch '^[0-9a-f]{32,}$'){
-    W "  Token non recupere automatiquement (reponse : $token)." Yellow
-    W "  Recupere-le manuellement : ssh $SshTarget 'cd $remoteDir/docker; docker compose exec downloader cat /state/api_token'" Gray
+    W "  Token non recupere automatiquement." Yellow
+    W "  Recupere-le : ssh -i `"$KeyPath`" $SshTarget `"cd $remoteDir/docker && docker compose exec downloader cat /state/api_token`"" Gray
     $token = Read-Host "Colle le token ici (ou laisse vide pour finir plus tard)"
+} else {
+    W "  Token recupere." Green
 }
 
 $serverUrl = "http://${NasHost}:$ApiPort"

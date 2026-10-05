@@ -158,7 +158,11 @@ def ensure_deps() -> None:
     if not deno.exists():
         print(f"{C.YELLOW}[setup] Deno absent -- installation...{C.RESET}")
         try:
-            subprocess.run([sys.executable, "-m", "spotdl", "--download-deno"], check=True)
+            # spotdl pose parfois une question interactive (y/N) quand il croit
+            # Deno deja installe ; sans TTY (conteneur) ca leve EOFError. On
+            # repond "y" en stdin pour forcer le telechargement sans blocage.
+            subprocess.run([sys.executable, "-m", "spotdl", "--download-deno"],
+                           check=True, input="y\n", text=True)
         except subprocess.CalledProcessError:
             print(f"{C.YELLOW}[!] installation de Deno echouee.{C.RESET}")
 
@@ -291,6 +295,15 @@ def run_spotdl(action: str, url: str, cfg: dict, base: Path, log_fh,
     providers = cfg["providers"].split()
     if providers:
         cmd += ["--audio", *providers]
+    if action == "sync":
+        # `spotdl sync <url>` EXIGE un --save-file (sinon ValueError "Wrong
+        # combination of arguments"). On stocke un .spotdl par source (nomme
+        # par son ID Spotify) dans un dossier d'etat a cote de la base.
+        ref = _spotify_ref(url)
+        sid = ref[1] if ref else _norm(url)[:22]
+        sync_dir = base / ".spotdl-sync"
+        sync_dir.mkdir(parents=True, exist_ok=True)
+        cmd += ["--save-file", str(sync_dir / f"{sid}.spotdl")]
     if action == "download":
         if _truthy(cfg["skip_existants"]):
             cmd += ["--overwrite", "skip"]
