@@ -118,7 +118,7 @@ W "  Connecte sans mot de passe : $uname" Green
 W "[2/5] Copie du projet sur le NAS..." Yellow
 Invoke-Sshk "mkdir -p $remoteDir" | Out-Null
 # On copie le strict necessaire au build (pas la musique ni les .git).
-$items = @('bin','docker','settings.ini','playlists.txt','README.md')
+$items = @('bin','docker','settings.ini.example','playlists.txt','README.md')
 foreach($it in $items){
     $src = Join-Path $Root $it
     if(Test-Path $src){

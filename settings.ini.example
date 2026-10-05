@@ -1,0 +1,44 @@
+# ============================================================
+#  Configuration du Spotify Downloader (modele)
+#  Copie ce fichier en settings.ini puis adapte les valeurs.
+#  La section [nas] est ajoutee automatiquement par setup-nas.ps1.
+# ============================================================
+
+[sortie]
+# Dossier de base ou atterrissent les musiques.
+# Un sous-dossier est cree automatiquement par playlist ({list-name}).
+#   base = D:\DJ\Tracks            (Windows)
+#   base = /musique                (conteneur Docker)
+# ATTENTION : pas de guillemets, pas de slash final.
+base = /musique
+
+[qualite]
+# Format audio : mp3, opus, m4a, flac, wav
+format = mp3
+
+# Debit (mp3 uniquement). 320k = qualite max.
+bitrate = 320k
+
+# Sources audio essayees DANS L'ORDRE (fallback).
+# youtube-music, youtube, soundcloud, bandcamp, piped
+providers = soundcloud youtube-music bandcamp
+
+# Normalisation loudness EBU R128 a -14 LUFS via ffmpeg (oui/non).
+normaliser = oui
+
+[avance]
+# Modele de nommage. {list-name} = nom de la playlist.
+template = {list-name}/{artists} - {title}.{output-ext}
+
+# Telechargements simultanes.
+threads = 8
+
+# Ignorer les titres deja telecharges (oui/non).
+skip_existants = oui
+
+# Scan complet du dossier a chaque lancement (oui/non).
+scan_complet = non
+
+# Mode synchronisation par defaut (oui/non).
+# oui = `spotdl sync` (ajoute les nouveautes, retire les retires).
+sync = non
