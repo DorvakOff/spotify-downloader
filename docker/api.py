@@ -87,7 +87,30 @@ def _sha256(path: Path, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+_MANIFEST_CACHE: dict = {"key": None, "data": None}
+
+
+def _dir_signature() -> tuple:
+    """Signature rapide du dossier (nb fichiers + somme taille + max mtime).
+    Permet d'invalider le cache du manifest sans re-hasher a chaque appel."""
+    n = 0
+    total = 0
+    newest = 0
+    if MUSIC_DIR.is_dir():
+        for p in MUSIC_DIR.rglob("*"):
+            if p.is_file() and p.suffix.lower() in AUDIO_EXT:
+                st = p.stat()
+                n += 1
+                total += st.st_size
+                newest = max(newest, int(st.st_mtime))
+    return (n, total, newest)
+
+
 def _build_manifest(with_hash: bool = True) -> dict:
+    # Cache : on ne re-hashe que si le dossier a change (nb/taille/mtime).
+    key = (_dir_signature(), bool(with_hash))
+    if _MANIFEST_CACHE["key"] == key and _MANIFEST_CACHE["data"] is not None:
+        return _MANIFEST_CACHE["data"]
     files = []
     if MUSIC_DIR.is_dir():
         for p in sorted(MUSIC_DIR.rglob("*")):
@@ -102,12 +125,15 @@ def _build_manifest(with_hash: bool = True) -> dict:
             if with_hash:
                 entry["sha256"] = _sha256(p)
             files.append(entry)
-    return {
+    data = {
         "generated": int(time.time()),
         "music_dir": str(MUSIC_DIR),
         "count": len(files),
         "files": files,
     }
+    _MANIFEST_CACHE["key"] = key
+    _MANIFEST_CACHE["data"] = data
+    return data
 
 
 _SPOTIFY_URL_RE = re.compile(

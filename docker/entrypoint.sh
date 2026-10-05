@@ -72,5 +72,8 @@ sync_loop() {
 sync_loop &
 
 # --- API au premier plan (PID 1 du conteneur) ------------------------------
-echo "[entrypoint] demarrage de l'API sur 0.0.0.0:$API_PORT"
-exec python3 -m uvicorn api:app --app-dir /app/docker --host 0.0.0.0 --port "$API_PORT"
+# Plusieurs workers : un worker unique sature des que le client ouvre plusieurs
+# connexions simultanees (telechargements en parallele) -> requetes en attente.
+API_WORKERS="${API_WORKERS:-4}"
+echo "[entrypoint] demarrage de l'API sur 0.0.0.0:$API_PORT ($API_WORKERS workers)"
+exec python3 -m uvicorn api:app --app-dir /app/docker --host 0.0.0.0 --port "$API_PORT" --workers "$API_WORKERS"
