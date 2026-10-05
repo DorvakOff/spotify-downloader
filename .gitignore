@@ -27,6 +27,9 @@ docker/musique/
 docker/cache/
 docker/config/
 
+# Config locale avec secrets (token API NAS) -- ne pas committer
+settings.ini
+
 # IDE
 .idea/
 .vscode/

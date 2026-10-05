@@ -10,7 +10,7 @@ on:
     paths:
       - "bin/**"
       - "docker/**"
-      - "settings.ini"
+      - "settings.ini.example"
       - "playlists.txt"
       - ".github/workflows/docker-build.yml"
   pull_request:

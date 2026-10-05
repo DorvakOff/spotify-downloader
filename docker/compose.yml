@@ -40,5 +40,6 @@ services:
       - "./config:/config"
       # Etat persistant (token, status.json, cache spotdl).
       - "./state:/state"
-      # Cache/auth spotdl (deno, ffmpeg telecharges, cache).
-      - "./cache/spotdl:/root/.spotdl"
+      # NB : on NE monte PAS /root/.spotdl -- Deno/ffmpeg sont installes dans
+      # l'image au build ; un volume vide ici les masquerait et spotdl les
+      # re-telechargerait a chaque recreate (et echouait sans TTY).

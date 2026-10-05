@@ -37,7 +37,7 @@ RUN python3 -m spotdl --download-deno || true
 # Code applicatif.
 COPY bin/ /app/bin/
 COPY docker/ /app/docker/
-COPY settings.ini /app/settings.ini
+COPY settings.ini.example /app/settings.ini
 COPY playlists.txt /app/playlists.txt
 
 RUN chmod +x /app/docker/entrypoint.sh /app/docker/sync-playlists.sh
