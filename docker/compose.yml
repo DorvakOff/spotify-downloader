@@ -26,6 +26,7 @@ services:
       # Config du telechargement (surcharge settings.ini).
       SYNC_INTERVAL: "${SYNC_INTERVAL:-10m}"
       SYNC_ON_START: "${SYNC_ON_START:-oui}"
+      PRUNE_ORPHANS: "${PRUNE_ORPHANS:-non}"
       SPOTDL_FORMAT: "${SPOTDL_FORMAT:-mp3}"
       SPOTDL_BITRATE: "${SPOTDL_BITRATE:-320k}"
       SPOTDL_PROVIDERS: "${SPOTDL_PROVIDERS:-soundcloud youtube-music bandcamp}"
