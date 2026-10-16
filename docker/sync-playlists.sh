@@ -64,4 +64,21 @@ else
     echo "[sync] termine avec code $RC"
     write_status "error" "echec (code $RC)"
 fi
+
+# --- Nettoyage des orphelins -------------------------------------------------
+# Supprime les fichiers plus suivis par le .spotdl de leur dossier (titres
+# retires d'une playlist dont le fichier a survecu). DRY-RUN par defaut : il
+# faut PRUNE_ORPHANS=oui pour supprimer reellement. On ne nettoie qu'apres un
+# sync OK (sinon un sync partiel/echoue ferait passer des titres legitimes
+# pour des orphelins).
+PRUNE_ORPHANS="${PRUNE_ORPHANS:-non}"
+if [ $RC -eq 0 ]; then
+    if [ "$PRUNE_ORPHANS" = "oui" ] || [ "$PRUNE_ORPHANS" = "1" ] || [ "$PRUNE_ORPHANS" = "true" ]; then
+        echo "[prune] nettoyage des orphelins (mode suppression)"
+        python3 /app/docker/prune-orphans.py --music "$MUSIC_DIR" --apply
+    else
+        echo "[prune] detection des orphelins (dry-run ; PRUNE_ORPHANS=oui pour supprimer)"
+        python3 /app/docker/prune-orphans.py --music "$MUSIC_DIR"
+    fi
+fi
 exit $RC

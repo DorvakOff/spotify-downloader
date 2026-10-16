@@ -29,7 +29,7 @@ param(
     [string]$Server,
     [string]$Token,
     [string]$Dest,
-    [switch]$Mirror,
+    [switch]$NoDelete,
     [switch]$NoHash,
     [switch]$Yes,
     [int]$Parallel = 0   # 0 = AUTO (concurrence adaptative) ; N>0 = fixe
@@ -43,7 +43,7 @@ if($PSVersionTable.PSVersion.Major -lt 7){
         if($Server){ $fwd += @('-Server',$Server) }
         if($Token ){ $fwd += @('-Token',$Token) }
         if($Dest  ){ $fwd += @('-Dest',$Dest) }
-        if($Mirror){ $fwd += '-Mirror' }
+        if($NoDelete){ $fwd += '-NoDelete' }
         if($NoHash){ $fwd += '-NoHash' }
         if($Yes   ){ $fwd += '-Yes' }
         if($Parallel -gt 0){ $fwd += @('-Parallel',"$Parallel") }
@@ -52,9 +52,9 @@ if($PSVersionTable.PSVersion.Major -lt 7){
     }
     Write-Host "pwsh 7 introuvable : telechargement en mode sequentiel (plus lent). Installe PowerShell 7 pour le parallelisme." -ForegroundColor Yellow
 }
-# Suppression locale UNIQUEMENT si -Mirror est passe (defaut sur : jamais de
-# suppression, pour ne pas effacer le contenu existant d'une cle USB).
-$NoDelete = -not $Mirror
+# Mode MIROIR par defaut (ajout + modif + suppression des fichiers absents du
+# NAS). Passer -NoDelete pour desactiver la suppression (sync ajout+modif
+# seulement). La suppression demande une confirmation (sauf -Yes).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # masque la barre native d'Invoke-WebRequest
@@ -93,12 +93,12 @@ if(-not $Server -or -not $Token -or -not $Dest){
 $Server = $Server.TrimEnd('/')
 $headers = @{ Authorization = "Bearer $Token" }
 
-$modeTxt = if($Mirror){ 'MIROIR (ajout + modif + suppression)' } else { 'ajout + modif (sans suppression)' }
+$modeTxt = if($NoDelete){ 'ajout + modif (sans suppression)' } else { 'MIROIR (ajout + modif + suppression)' }
 W ""
 W "  == Sync NAS -> local =======================================" Cyan
 W ("     Serveur : {0}" -f $Server) Gray
 W ("     Dest    : {0}" -f $Dest) Gray
-W ("     Mode    : {0}" -f $modeTxt) $(if($Mirror){'Yellow'}else{'Gray'})
+W ("     Mode    : {0}" -f $modeTxt) $(if($NoDelete){'Gray'}else{'Yellow'})
 W "  ============================================================" Cyan
 W ""
 
@@ -250,6 +250,8 @@ if($hasThreadJob){
     $lastDraw = (Get-Date).AddSeconds(-1)
     # Fenetre pour l'adaptatif : debit mesure sur ~2s, decision monter/descendre.
     $winStart = Get-Date; $winBytes = 0.0; $prevTp = 0.0
+    # Hill-climbing : on cherche le MEILLEUR debit (support lent = plus de // nuit).
+    $bestTp = 0.0; $bestConc = $conc; $climbDir = 1; $stale = 0
     # Fenetre d'AFFICHAGE : debit "recent" (depuis le dernier redraw ~1s).
     $dispStart = Get-Date; $dispBytes = 0.0; $curTp = 0.0
     while($i -lt $n -or $jobs.Count -gt 0){
@@ -271,17 +273,33 @@ if($hasThreadJob){
             if($r){ $b = [double]($remote[$r.rel].size); $lastBytes += $b; $winBytes += $b; $dispBytes += $b }
         }
 
-        # Adaptatif : toutes les ~2s, on juge le debit de la fenetre et on ajuste.
+        # Adaptatif hill-climbing : toutes les ~2s, on compare le debit au
+        # meilleur connu et on ajuste la concurrence vers l'OPTIMUM. Sur un
+        # support lent (cle USB), monter la concurrence ne gagne rien (voire
+        # nuit) -> on redescend et on se stabilise au meilleur niveau trouve.
         if($auto){
             $winSec = ((Get-Date) - $winStart).TotalSeconds
             if($winSec -ge 2){
                 $tp = ($winBytes/1MB) / $winSec
                 if($batchErr -gt 0){
-                    $conc = [Math]::Max($MIN_C, [int][Math]::Floor($conc/2))     # erreurs -> recule
-                } elseif($tp -ge ($prevTp * 1.05)){
-                    $conc = [Math]::Min($MAX_C, $conc + 4)                        # debit en hausse -> pousse
-                } elseif($tp -lt ($prevTp * 0.9)){
-                    $conc = [Math]::Max($MIN_C, $conc - 2)                        # debit en baisse -> recule un peu
+                    # Erreurs -> le serveur sature : on recule franchement.
+                    $conc = [Math]::Max($MIN_C, [int][Math]::Floor($conc/2))
+                    $climbDir = -1; $bestTp = 0.0
+                } elseif($tp -gt ($bestTp * 1.08)){
+                    # Nette amelioration -> on memorise et on continue dans le meme sens.
+                    $bestTp = $tp; $bestConc = $conc; $stale = 0
+                    $conc = [Math]::Max($MIN_C, [Math]::Min($MAX_C, $conc + (4 * $climbDir)))
+                } else {
+                    # Pas d'amelioration : monter ne sert a rien ici.
+                    $stale++
+                    if($stale -ge 1){
+                        # On revient au meilleur niveau connu et on inverse la
+                        # recherche pour tester un cran en dessous (support lent).
+                        $climbDir = -1
+                        $conc = [Math]::Max($MIN_C, [Math]::Min($bestConc, $conc - 4))
+                        if($conc -le $bestConc){ $conc = [Math]::Max($MIN_C, $bestConc) }
+                        $stale = 0
+                    }
                 }
                 $prevTp = $tp; $winStart = Get-Date; $winBytes = 0.0
             }
