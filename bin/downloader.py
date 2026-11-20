@@ -243,16 +243,31 @@ def normalize_loudness(files: list[Path], target_i: float = -14.0) -> int:
     total = len(files)
     start = time.time()
     for i, f in enumerate(files, 1):
-        tmp = f.with_suffix(f.suffix + ".norm.tmp")
+        # Le fichier temporaire DOIT garder la vraie extension : ffmpeg deduit
+        # le format de sortie de l'extension (".mp3.norm.tmp" -> echec silencieux,
+        # rien n'etait jamais normalise).
+        tmp = f.with_name(f"{f.stem}.norm{f.suffix}")
         cmd = [
             ff, "-y", "-i", str(f),
+            "-map", "0:a", "-map", "0:v?", "-c:v", "copy",  # garde la pochette telle quelle
             "-af", f"loudnorm=I={target_i}:TP=-1.5:LRA=11",
             "-c:a", "libmp3lame" if f.suffix.lower() == ".mp3" else "copy",
             "-b:a", "320k", "-map_metadata", "0", "-id3v2_version", "3",
             str(tmp),
         ]
+        # ffmpeg ne recopie pas fidelement l'ID3 (COMM -> TXXX, WOAS/POPM perdus) :
+        # on garde les tags d'origine pour les reecrire tels quels apres coup.
+        orig_tags = None
+        if f.suffix.lower() == ".mp3":
+            try:
+                from mutagen.id3 import ID3
+                orig_tags = ID3(f)
+            except Exception:  # noqa: BLE001  (pas de tag / mutagen absent)
+                orig_tags = None
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if orig_tags is not None:
+                orig_tags.save(tmp, v2_version=3)
             tmp.replace(f)
             done += 1
         except subprocess.CalledProcessError:
