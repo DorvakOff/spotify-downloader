@@ -21,7 +21,7 @@ bitrate = 320k
 
 # Sources audio essayees DANS L'ORDRE (fallback).
 # youtube-music, youtube, soundcloud, bandcamp, piped
-providers = soundcloud youtube-music bandcamp
+providers = soundcloud youtube-music youtube bandcamp
 
 # Normalisation loudness EBU R128 a -14 LUFS via ffmpeg (oui/non).
 normaliser = oui

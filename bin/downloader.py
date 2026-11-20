@@ -188,7 +188,7 @@ def load_config() -> dict:
     d = {
         "base": str(ROOT / "Musique"),
         "format": "mp3", "bitrate": "320k",
-        "providers": "soundcloud youtube-music bandcamp",
+        "providers": "soundcloud youtube-music youtube bandcamp",
         "template": r"{list-name}\{artists} - {title}.{output-ext}",
         "threads": "8", "skip_existants": "oui", "scan_complet": "non",
         "normaliser": "oui", "sync": "non",
