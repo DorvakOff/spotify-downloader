@@ -20,6 +20,12 @@ services:
     image: "${IMAGE:-ghcr.io/dorvakoff/spotify-downloader:latest}"
     container_name: spotify-downloader
     restart: unless-stopped
+    # DNS explicite : le resolveur interne de Docker (127.0.0.11) ne relaie pas
+    # toujours vers la box -> spotdl ne resout plus Spotify/YouTube et chaque
+    # sync se termine "OK" sans rien telecharger.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     ports:
       - "${API_PORT:-8787}:8787"
     environment:
@@ -29,7 +35,7 @@ services:
       PRUNE_ORPHANS: "${PRUNE_ORPHANS:-non}"
       SPOTDL_FORMAT: "${SPOTDL_FORMAT:-mp3}"
       SPOTDL_BITRATE: "${SPOTDL_BITRATE:-320k}"
-      SPOTDL_PROVIDERS: "${SPOTDL_PROVIDERS:-soundcloud youtube-music bandcamp}"
+      SPOTDL_PROVIDERS: "${SPOTDL_PROVIDERS:-soundcloud youtube-music youtube bandcamp}"
       SPOTDL_THREADS: "${SPOTDL_THREADS:-8}"
       SPOTDL_NORMALISER: "${SPOTDL_NORMALISER:-oui}"
       # Un token fixe peut etre impose ici ; sinon il est auto-genere.
